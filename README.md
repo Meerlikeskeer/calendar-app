@@ -28,6 +28,7 @@ The calendar will not open until it has a Convex deployment and authenticated se
 ```bash
 npx convex env set HOUSEHOLD_ALLOWED_USERNAMES "neelam,meer,vaani,haashi"
 npx convex env set HOUSEHOLD_SETUP_CODE "replace-with-a-long-random-one-time-code"
+npx convex env set HOUSEHOLD_RECOVERY_CODE "replace-with-a-different-long-random-code"
 ```
 
 On the sign-in page, create each approved household account with its username, a unique password of at least eight characters, and the provisioning code. Once every account exists, remove the provisioning code so no further accounts can be created:
@@ -36,7 +37,7 @@ On the sign-in page, create each approved household account with its username, a
 npx convex env remove HOUSEHOLD_SETUP_CODE
 ```
 
-Existing users can still sign in after the provisioning code is removed. The user allowlist and setup code are server-only Convex environment variables; never place them in `VITE_*` variables or source control.
+Existing users can still sign in after the provisioning code is removed. The sign-in screen's **Forgot password?** flow uses `HOUSEHOLD_RECOVERY_CODE` to let a household member select a new password. Keep that recovery code private and retain it after removing the provisioning code. The user allowlist and codes are server-only Convex environment variables; never place them in `VITE_*` variables or source control.
 
 Manual commands:
 

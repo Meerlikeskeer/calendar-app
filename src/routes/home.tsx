@@ -93,6 +93,9 @@ const householdApi = {
   changeMyPassword: makeFunctionReference<"action">(
     "household:changeMyPassword"
   ),
+  resetPasswordWithRecoveryCode: makeFunctionReference<"action">(
+    "household:resetPasswordWithRecoveryCode"
+  ),
   listAggregateTasks: makeFunctionReference<"query">(
     "household:listAggregateTasks"
   ),
@@ -1735,19 +1738,33 @@ function LoadingScreen() {
 
 function SignInScreen() {
   const { signIn } = useAuthActions()
+  const resetPasswordWithRecoveryCode = useAction(
+    householdApi.resetPasswordWithRecoveryCode
+  )
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [contactEmail, setContactEmail] = useState("")
   const [contactPhone, setContactPhone] = useState("")
   const [setupCode, setSetupCode] = useState("")
   const [isSettingUp, setIsSettingUp] = useState(false)
+  const [isResettingPassword, setIsResettingPassword] = useState(false)
+  const [recoveryCode, setRecoveryCode] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     if (!username.trim() || !password) {
-      toast.error("Enter both your username and password.")
+      toast.error(
+        isResettingPassword
+          ? "Enter your username and a new password."
+          : "Enter both your username and password."
+      )
+      return
+    }
+
+    if (isResettingPassword && !recoveryCode) {
+      toast.error("Enter the household recovery code.")
       return
     }
 
@@ -1764,6 +1781,19 @@ function SignInScreen() {
     setIsSubmitting(true)
 
     try {
+      if (isResettingPassword) {
+        await resetPasswordWithRecoveryCode({
+          username: username.trim(),
+          recoveryCode,
+          newPassword: password,
+        })
+        setPassword("")
+        setRecoveryCode("")
+        setIsResettingPassword(false)
+        toast.success("Password reset. Sign in with your new password.")
+        return
+      }
+
       if (isSettingUp) {
         window.sessionStorage.setItem(
           PENDING_CONTACT_PROFILE_KEY,
@@ -1803,9 +1833,13 @@ function SignInScreen() {
             <LockKeyholeIcon className="size-5" aria-hidden="true" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold">Household sign in</h1>
+            <h1 className="text-lg font-semibold">
+              {isResettingPassword ? "Reset password" : "Household sign in"}
+            </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Sign in to open the shared calendar.
+              {isResettingPassword
+                ? "Use the household recovery code to choose a new password."
+                : "Sign in to open the shared calendar."}
             </p>
           </div>
         </div>
@@ -1822,9 +1856,13 @@ function SignInScreen() {
             />
           </label>
           <label className="grid gap-1.5 text-sm font-medium">
-            Password
+            {isResettingPassword ? "New password" : "Password"}
             <Input
-              autoComplete={isSettingUp ? "new-password" : "current-password"}
+              autoComplete={
+                isSettingUp || isResettingPassword
+                  ? "new-password"
+                  : "current-password"
+              }
               className="h-10"
               disabled={isSubmitting}
               onChange={(event) => setPassword(event.currentTarget.value)}
@@ -1832,7 +1870,20 @@ function SignInScreen() {
               value={password}
             />
           </label>
-          {isSettingUp && (
+          {isResettingPassword && (
+            <label className="grid gap-1.5 text-sm font-medium">
+              Household recovery code
+              <Input
+                autoComplete="one-time-code"
+                className="h-10"
+                disabled={isSubmitting}
+                onChange={(event) => setRecoveryCode(event.currentTarget.value)}
+                type="password"
+                value={recoveryCode}
+              />
+            </label>
+          )}
+          {isSettingUp && !isResettingPassword && (
             <>
               <label className="grid gap-1.5 text-sm font-medium">
                 Email for reminders
@@ -1877,17 +1928,38 @@ function SignInScreen() {
           ) : (
             <LogInIcon className="size-4" aria-hidden="true" />
           )}
-          {isSettingUp ? "Create household account" : "Sign in"}
+          {isResettingPassword
+            ? "Reset password"
+            : isSettingUp
+              ? "Create household account"
+              : "Sign in"}
         </Button>
 
-        <button
-          className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-          disabled={isSubmitting}
-          onClick={() => setIsSettingUp((current) => !current)}
-          type="button"
-        >
-          {isSettingUp ? "I already have an account" : "Set up an approved account"}
-        </button>
+        <div className="grid gap-2 text-center">
+          {!isResettingPassword && (
+            <button
+              className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              disabled={isSubmitting}
+              onClick={() => setIsSettingUp((current) => !current)}
+              type="button"
+            >
+              {isSettingUp
+                ? "I already have an account"
+                : "Set up an approved account"}
+            </button>
+          )}
+          <button
+            className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            disabled={isSubmitting}
+            onClick={() => {
+              setIsResettingPassword((current) => !current)
+              setIsSettingUp(false)
+            }}
+            type="button"
+          >
+            {isResettingPassword ? "Back to sign in" : "Forgot password?"}
+          </button>
+        </div>
       </form>
     </main>
   )

@@ -405,6 +405,56 @@ export const changeMyPassword = action({
   },
 })
 
+export const resetPasswordWithRecoveryCode = action({
+  args: {
+    username: v.string(),
+    recoveryCode: v.string(),
+    newPassword: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const username = requireText(args.username, "Username").toLowerCase()
+    const recoveryCode =
+      process.env.HOUSEHOLD_RECOVERY_CODE ?? process.env.HOUSEHOLD_SETUP_CODE
+
+    if (
+      !recoveryCode ||
+      !args.recoveryCode ||
+      args.recoveryCode !== recoveryCode
+    ) {
+      fail("FORBIDDEN", "Recovery code is invalid")
+    }
+
+    if (!/^[a-z0-9][a-z0-9_-]{2,31}$/.test(username)) {
+      fail("INVALID_INPUT", "Username is invalid")
+    }
+
+    if (args.newPassword.length < 8) {
+      fail("INVALID_INPUT", "New password must be at least 8 characters")
+    }
+
+    const account = await retrieveAccount(ctx, {
+      provider: "password",
+      account: { id: `${username}@household.local` },
+    })
+
+    if (!account) {
+      fail("NOT_FOUND", "Account not found")
+    }
+
+    await modifyAccountCredentials(ctx, {
+      provider: "password",
+      account: {
+        id: `${username}@household.local`,
+        secret: args.newPassword,
+      },
+    })
+
+    await invalidateSessions(ctx, { userId: account.user._id })
+
+    return { reset: true }
+  },
+})
+
 export const listAggregateTasks = query({
   args: {
     includeDone: v.optional(v.boolean()),
