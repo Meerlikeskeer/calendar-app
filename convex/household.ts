@@ -15,12 +15,20 @@ const resetCadence = v.union(
   v.literal("weekly"),
 )
 
-const taskReminder = v.object({
-  enabled: v.boolean(),
-  offsetMinutes: v.number(),
-  email: v.boolean(),
-  sms: v.boolean(),
-})
+const taskReminder = v.union(
+  v.object({
+    enabled: v.boolean(),
+    offsetMinutes: v.number(),
+    email: v.boolean(),
+    sms: v.boolean(),
+  }),
+  v.object({
+    enabled: v.boolean(),
+    timings: v.array(v.string()),
+    email: v.boolean(),
+    sms: v.boolean(),
+  }),
+)
 
 const homeControlStatus = v.union(
   v.literal("Locked"),
@@ -215,6 +223,19 @@ export const listHouseholdUsers = query({
   },
 })
 
+export const getCurrentViewer = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await requireAuthenticated(ctx)
+    const email = identity.email?.toLowerCase() ?? ""
+    const username = email.endsWith("@household.local")
+      ? email.slice(0, -"@household.local".length)
+      : ""
+
+    return { username }
+  },
+})
+
 export const listAggregateTasks = query({
   args: {
     includeDone: v.optional(v.boolean()),
@@ -379,7 +400,7 @@ export const createTask = mutation({
       createdBy: args.createdBy,
       reminder: args.reminder ?? {
         enabled: false,
-        offsetMinutes: 30,
+        timings: [],
         email: true,
         sms: false,
       },

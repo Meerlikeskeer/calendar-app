@@ -16,12 +16,20 @@ const resetCadence = v.union(
   v.literal("weekly"),
 )
 
-const taskReminder = v.object({
-  enabled: v.boolean(),
-  offsetMinutes: v.number(),
-  email: v.boolean(),
-  sms: v.boolean(),
-})
+const taskReminder = v.union(
+  v.object({
+    enabled: v.boolean(),
+    offsetMinutes: v.number(),
+    email: v.boolean(),
+    sms: v.boolean(),
+  }),
+  v.object({
+    enabled: v.boolean(),
+    timings: v.array(v.string()),
+    email: v.boolean(),
+    sms: v.boolean(),
+  }),
+)
 
 const notificationKind = v.union(
   v.literal("digest"),

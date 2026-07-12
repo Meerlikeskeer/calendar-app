@@ -38,6 +38,7 @@ import {
   addDays,
   buildSeedNotes,
   buildSeedNotifications,
+  buildSeedCategoryReminderPresets,
   buildSeedReminderProfiles,
   buildSeedTasks,
   createCategoryId,
@@ -63,10 +64,12 @@ import {
 } from "@/lib/household-data"
 import type {
   CategoryId,
+  CategoryReminderPreset,
   HouseholdTask,
   MemberId,
   MemberReminderProfile,
   ResetCadence,
+  ReminderTiming,
   TaskStatus,
   NotePage,
   NotificationRecord,
@@ -77,6 +80,9 @@ import type {
 const convexEnabled = Boolean(import.meta.env.VITE_CONVEX_URL)
 
 const householdApi = {
+  getCurrentViewer: makeFunctionReference<"query">(
+    "household:getCurrentViewer"
+  ),
   listAggregateTasks: makeFunctionReference<"query">(
     "household:listAggregateTasks"
   ),
@@ -119,6 +125,8 @@ interface ContextMenuState {
 }
 
 const REMINDER_OPTIONS = [
+  { label: "Day before at 9:30 AM", value: "day-before-0930" },
+  { label: "Morning of at 9:30 AM", value: "morning-of-0930" },
   { label: "15 min before", value: "15" },
   { label: "30 min before", value: "30" },
   { label: "1 hr before", value: "60" },
@@ -126,6 +134,21 @@ const REMINDER_OPTIONS = [
   { label: "1 day before", value: "1440" },
   { label: "2 days before", value: "2880" },
 ] as const
+
+function formatReminderTiming(timing: ReminderTiming) {
+  return REMINDER_OPTIONS.find((option) => option.value === timing)?.label ?? timing
+}
+
+function reminderFromPreset(preset: CategoryReminderPreset | undefined) {
+  const timings = preset?.timings ?? []
+
+  return {
+    enabled: timings.length > 0,
+    timings,
+    email: true,
+    sms: false,
+  } satisfies TaskReminderSettings
+}
 
 function usePersistentState<T>(key: string, fallbackFactory: () => T) {
   const [value, setValue] = useState<T>(() => {
@@ -207,10 +230,23 @@ function draftFromTask(task: HouseholdTask): TaskDraft {
 }
 
 function normalizeTask(task: HouseholdTask): HouseholdTask {
+  const reminder = task.reminder as TaskReminderSettings & {
+    offsetMinutes?: number
+  }
+
   return {
     ...task,
     category: task.category === "spiritual" ? "chores" : task.category,
-    reminder: task.reminder ?? defaultTaskReminder(),
+    reminder: reminder
+      ? {
+          enabled: reminder.enabled,
+          timings: Array.isArray(reminder.timings)
+            ? reminder.timings
+            : [String(reminder.offsetMinutes ?? 30) as ReminderTiming],
+          email: reminder.email,
+          sms: reminder.sms,
+        }
+      : defaultTaskReminder(),
   }
 }
 
@@ -287,18 +323,8 @@ function softColorFromHex(color: string) {
   return /^#[0-9a-fA-F]{6}$/.test(color) ? `${color}24` : "rgba(0, 0, 0, 0.08)"
 }
 
-function formatReminderOffset(minutes: number) {
-  if (minutes >= 1440) {
-    const days = minutes / 1440
-    return `${days} day${days === 1 ? "" : "s"} before`
-  }
-
-  if (minutes >= 60) {
-    const hours = minutes / 60
-    return `${hours} hr before`
-  }
-
-  return `${minutes} min before`
+function formatReminderSchedule(timings: ReminderTiming[]) {
+  return timings.map(formatReminderTiming).join(", ")
 }
 
 function CalendarSelect<TValue extends string>({
@@ -486,7 +512,19 @@ function ConvexCalendarBridge({
           resetCadence: task.resetCadence,
           createdBy,
           externalUrl: task.externalUrl,
-          reminder: task.reminder ?? defaultTaskReminder(),
+          reminder: normalizeTask({
+            id: task._id,
+            title: task.title,
+            assignedTo,
+            category: task.category,
+            startTime: new Date(task.startTime).toISOString(),
+            endTime: new Date(task.endTime).toISOString(),
+            status: task.status,
+            communal: task.communal,
+            resetCadence: task.resetCadence,
+            createdBy,
+            reminder: task.reminder ?? defaultTaskReminder(),
+          }).reminder,
           completedAt:
             task.completedAt === undefined
               ? undefined
@@ -628,7 +666,9 @@ function CalendarEvent({
             </span>
           )}
           {task.reminder?.enabled && (
-            <span>{formatReminderOffset(task.reminder.offsetMinutes)}</span>
+            <span className="truncate">
+              {formatReminderSchedule(task.reminder.timings)}
+            </span>
           )}
         </span>
       </button>
@@ -723,6 +763,7 @@ function ContextMenu({
 
 function TaskComposer({
   categories,
+  categoryReminderPresets,
   date,
   draft,
   editingTask,
@@ -732,6 +773,7 @@ function TaskComposer({
   onSubmit,
 }: {
   categories: TaskCategory[]
+  categoryReminderPresets: CategoryReminderPreset[]
   date: Date
   draft: TaskDraft
   editingTask: HouseholdTask | undefined
@@ -812,6 +854,11 @@ function TaskComposer({
                 onDraftChange({
                   ...draft,
                   category,
+                  reminder: reminderFromPreset(
+                    categoryReminderPresets.find(
+                      (preset) => preset.categoryId === category
+                    )
+                  ),
                 })
               }
             />
@@ -884,24 +931,44 @@ function TaskComposer({
           </div>
 
           <div className={draft.reminder.enabled ? "grid gap-3" : "grid gap-3 opacity-55"}>
-            <label className="grid gap-1 text-sm font-medium">
-              Remind Me
-              <CalendarSelect<string>
-                ariaLabel="Reminder frequency"
-                disabled={!draft.reminder.enabled}
-                options={[...REMINDER_OPTIONS]}
-                value={String(draft.reminder.offsetMinutes)}
-                onChange={(offsetMinutes) =>
-                  onDraftChange({
-                    ...draft,
-                    reminder: {
-                      ...draft.reminder,
-                      offsetMinutes: Number(offsetMinutes),
-                    },
-                  })
-                }
-              />
-            </label>
+            <div className="grid gap-2">
+              <p className="text-sm font-medium">Reminder timing</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {REMINDER_OPTIONS.map((option) => {
+                  const selected = draft.reminder.timings.includes(
+                    option.value as ReminderTiming
+                  )
+
+                  return (
+                    <label
+                      key={option.value}
+                      className="flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium"
+                    >
+                      <input
+                        checked={selected}
+                        className="size-4"
+                        disabled={!draft.reminder.enabled}
+                        type="checkbox"
+                        onChange={(event) => {
+                          const timing = option.value as ReminderTiming
+                          const timings = event.currentTarget.checked
+                            ? [...draft.reminder.timings, timing]
+                            : draft.reminder.timings.filter(
+                                (current) => current !== timing
+                              )
+
+                          onDraftChange({
+                            ...draft,
+                            reminder: { ...draft.reminder, timings },
+                          })
+                        }}
+                      />
+                      {option.label}
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
 
             <div className="grid gap-2 sm:grid-cols-2">
               <label className="flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-medium">
@@ -1159,16 +1226,24 @@ function NotesPanel({
 
 function SettingsPanel({
   categories,
+  categoryReminderPresets,
   onCategoriesChange,
+  onCategoryReminderPresetsChange,
   onClose,
-  onReminderProfilesChange,
-  reminderProfiles,
+  onReminderProfileChange,
+  reminderProfile,
+  viewer,
 }: {
   categories: TaskCategory[]
+  categoryReminderPresets: CategoryReminderPreset[]
   onCategoriesChange: (categories: TaskCategory[]) => void
+  onCategoryReminderPresetsChange: (
+    presets: CategoryReminderPreset[]
+  ) => void
   onClose: () => void
-  onReminderProfilesChange: (profiles: MemberReminderProfile[]) => void
-  reminderProfiles: MemberReminderProfile[]
+  onReminderProfileChange: (profile: MemberReminderProfile) => void
+  reminderProfile: MemberReminderProfile
+  viewer: MemberId
 }) {
   const [categoryName, setCategoryName] = useState("")
   const [categoryColor, setCategoryColor] = useState("#64748b")
@@ -1214,14 +1289,30 @@ function SettingsPanel({
     onCategoriesChange(categories.filter((category) => category.id !== categoryId))
   }
 
-  function updateReminderProfile(
-    memberId: MemberId,
-    patch: Partial<MemberReminderProfile>
+  function updateReminderProfile(patch: Partial<MemberReminderProfile>) {
+    onReminderProfileChange({ ...reminderProfile, ...patch })
+  }
+
+  function updateCategoryReminderPreset(
+    categoryId: CategoryId,
+    timing: ReminderTiming,
+    enabled: boolean
   ) {
-    onReminderProfilesChange(
-      reminderProfiles.map((profile) =>
-        profile.memberId === memberId ? { ...profile, ...patch } : profile
-      )
+    const current =
+      categoryReminderPresets.find(
+        (preset) => preset.categoryId === categoryId
+      )?.timings ?? []
+    const timings = enabled
+      ? [...current, timing]
+      : current.filter((currentTiming) => currentTiming !== timing)
+    const remaining = categoryReminderPresets.filter(
+      (preset) => preset.categoryId !== categoryId
+    )
+
+    onCategoryReminderPresetsChange(
+      timings.length > 0
+        ? [...remaining, { categoryId, timings }]
+        : remaining
     )
   }
 
@@ -1249,115 +1340,119 @@ function SettingsPanel({
           <div>
             <h3 className="text-sm font-semibold">Reminder Accounts</h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Prototype credentials and contact routes for email/text reminders.
+              Only your delivery details are visible and editable here.
             </p>
           </div>
 
+          <div className="grid gap-3 rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-3">
+              <span
+                className="flex size-9 items-center justify-center rounded-lg border text-sm font-semibold"
+                style={{ borderColor: getMember(viewer)?.color, color: getMember(viewer)?.color }}
+              >
+                {getMember(viewer)?.avatarIcon}
+              </span>
+              <div>
+                <p className="text-sm font-semibold">{getMember(viewer)?.name}</p>
+                <p className="text-xs text-muted-foreground">Your reminder delivery</p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1 text-sm font-medium">
+                Email
+                <Input
+                  className="h-10"
+                  placeholder="name@example.com"
+                  type="email"
+                  value={reminderProfile.email}
+                  onChange={(event) =>
+                    updateReminderProfile({ email: event.currentTarget.value })
+                  }
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-medium">
+                Phone
+                <Input
+                  className="h-10"
+                  placeholder="+1 555 555 5555"
+                  type="tel"
+                  value={reminderProfile.phone}
+                  onChange={(event) =>
+                    updateReminderProfile({ phone: event.currentTarget.value })
+                  }
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium">
+                <input
+                  checked={reminderProfile.emailEnabled}
+                  className="size-4"
+                  type="checkbox"
+                  onChange={(event) =>
+                    updateReminderProfile({ emailEnabled: event.currentTarget.checked })
+                  }
+                />
+                Email reminders
+              </label>
+              <label className="flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium">
+                <input
+                  checked={reminderProfile.smsEnabled}
+                  className="size-4"
+                  type="checkbox"
+                  onChange={(event) =>
+                    updateReminderProfile({ smsEnabled: event.currentTarget.checked })
+                  }
+                />
+                Text reminders
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-3 rounded-lg border bg-background p-3">
+          <div>
+            <h3 className="text-sm font-semibold">Category Reminder Defaults</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              These timings are applied when you choose a category for a new item.
+            </p>
+          </div>
           <div className="grid gap-3">
-            {HOUSEHOLD_MEMBERS.map((member) => {
-              const profile =
-                reminderProfiles.find((item) => item.memberId === member.id) ??
-                {
-                  memberId: member.id,
-                  password: "",
-                  email: "",
-                  phone: "",
-                  emailEnabled: true,
-                  smsEnabled: false,
-                }
+            {categories.map((category) => {
+              const timings =
+                categoryReminderPresets.find(
+                  (preset) => preset.categoryId === category.id
+                )?.timings ?? []
 
               return (
-                <div
-                  key={member.id}
-                  className="grid gap-3 rounded-lg border bg-card p-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className="flex size-9 items-center justify-center rounded-lg border text-sm font-semibold"
-                      style={{ borderColor: member.color, color: member.color }}
-                    >
-                      {member.avatarIcon}
-                    </span>
-                    <div>
-                      <p className="text-sm font-semibold">{member.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Reminder login and delivery
-                      </p>
-                    </div>
+                <div key={category.id} className="grid gap-2 rounded-lg border bg-card p-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <span className="size-2.5 rounded-full" style={{ backgroundColor: category.color }} />
+                    {category.label}
                   </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="grid gap-1 text-sm font-medium">
-                      Password
-                      <Input
-                        className="h-10"
-                        placeholder="Set password"
-                        type="password"
-                        value={profile.password}
-                        onChange={(event) =>
-                          updateReminderProfile(member.id, {
-                            password: event.currentTarget.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="grid gap-1 text-sm font-medium">
-                      Email
-                      <Input
-                        className="h-10"
-                        placeholder="name@example.com"
-                        type="email"
-                        value={profile.email}
-                        onChange={(event) =>
-                          updateReminderProfile(member.id, {
-                            email: event.currentTarget.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="grid gap-1 text-sm font-medium">
-                      Phone
-                      <Input
-                        className="h-10"
-                        placeholder="+1 555 555 5555"
-                        type="tel"
-                        value={profile.phone}
-                        onChange={(event) =>
-                          updateReminderProfile(member.id, {
-                            phone: event.currentTarget.value,
-                          })
-                        }
-                      />
-                    </label>
-                  </div>
-
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <label className="flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium">
-                      <input
-                        checked={profile.emailEnabled}
-                        className="size-4"
-                        type="checkbox"
-                        onChange={(event) =>
-                          updateReminderProfile(member.id, {
-                            emailEnabled: event.currentTarget.checked,
-                          })
-                        }
-                      />
-                      Email reminders
-                    </label>
-                    <label className="flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium">
-                      <input
-                        checked={profile.smsEnabled}
-                        className="size-4"
-                        type="checkbox"
-                        onChange={(event) =>
-                          updateReminderProfile(member.id, {
-                            smsEnabled: event.currentTarget.checked,
-                          })
-                        }
-                      />
-                      Text reminders
-                    </label>
+                    {REMINDER_OPTIONS.map((option) => (
+                      <label
+                        key={option.value}
+                        className="flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium"
+                      >
+                        <input
+                          checked={timings.includes(option.value as ReminderTiming)}
+                          className="size-4"
+                          type="checkbox"
+                          onChange={(event) =>
+                            updateCategoryReminderPreset(
+                              category.id,
+                              option.value as ReminderTiming,
+                              event.currentTarget.checked
+                            )
+                          }
+                        />
+                        {option.label}
+                      </label>
+                    ))}
                   </div>
                 </div>
               )
@@ -1572,17 +1667,29 @@ function SignInScreen() {
 function SecureCalendarGate() {
   const { isAuthenticated, isLoading } = useConvexAuth()
   const { signOut } = useAuthActions()
+  const viewer = useQuery(
+    householdApi.getCurrentViewer,
+    isAuthenticated ? {} : "skip"
+  )
 
   async function handleSignOut() {
     await signOut()
     toast.success("Signed out.")
   }
 
-  if (isLoading) {
+  if (isLoading || (isAuthenticated && viewer === undefined)) {
     return <LoadingScreen />
   }
 
-  return isAuthenticated ? <CalendarHome onSignOut={handleSignOut} /> : <SignInScreen />
+  const viewerId = HOUSEHOLD_MEMBERS.find(
+    (member) => member.id === viewer?.username
+  )?.id
+
+  return isAuthenticated && viewerId ? (
+    <CalendarHome onSignOut={handleSignOut} viewer={viewerId} />
+  ) : (
+    <SignInScreen />
+  )
 }
 
 function BackendRequiredScreen() {
@@ -1603,7 +1710,13 @@ export function HomeRoute() {
   return convexEnabled ? <SecureCalendarGate /> : <BackendRequiredScreen />
 }
 
-function CalendarHome({ onSignOut }: { onSignOut: () => Promise<void> }) {
+function CalendarHome({
+  onSignOut,
+  viewer,
+}: {
+  onSignOut: () => Promise<void>
+  viewer: MemberId
+}) {
   const [tasks, setTasks] = usePersistentState(
     STORAGE_KEYS.tasks,
     buildSeedTasks
@@ -1617,9 +1730,14 @@ function CalendarHome({ onSignOut }: { onSignOut: () => Promise<void> }) {
     STORAGE_KEYS.notifications,
     buildSeedNotifications
   )
-  const [reminderProfiles, setReminderProfiles] = usePersistentState(
-    STORAGE_KEYS.reminderProfiles,
-    buildSeedReminderProfiles
+  const [reminderProfile, setReminderProfile] = usePersistentState(
+    `${STORAGE_KEYS.reminderProfiles}-${viewer}`,
+    () =>
+      buildSeedReminderProfiles().find((profile) => profile.memberId === viewer)!
+  )
+  const [categoryReminderPresets, setCategoryReminderPresets] = usePersistentState(
+    `${STORAGE_KEYS.reminderCategoryPresets}-${viewer}`,
+    buildSeedCategoryReminderPresets
   )
   const [viewDate, setViewDate] = useState(() => startOfDay(new Date()))
   const [selectedDate, setSelectedDate] = useState(() => startOfDay(new Date()))
@@ -1669,17 +1787,7 @@ function CalendarHome({ onSignOut }: { onSignOut: () => Promise<void> }) {
     setTasks((current) =>
       current.map((task) => normalizeTask(task))
     )
-    setReminderProfiles((current) => {
-      const currentByMember = new Map(
-        current.map((profile) => [profile.memberId, profile])
-      )
-
-      return buildSeedReminderProfiles().map((profile) => ({
-        ...profile,
-        ...currentByMember.get(profile.memberId),
-      }))
-    })
-  }, [setCategories, setReminderProfiles, setTasks])
+  }, [setCategories, setTasks])
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000)
@@ -1763,10 +1871,18 @@ function CalendarHome({ onSignOut }: { onSignOut: () => Promise<void> }) {
 
   function openComposer(date: Date, category?: CategoryId) {
     const selected = startOfDay(date)
+    const selectedCategory = category ?? "chores"
     setSelectedDate(selected)
     setComposerDate(selected)
     setEditingTask(undefined)
-    setDraft(createDraftForDate(selected, category))
+    setDraft({
+      ...createDraftForDate(selected, selectedCategory, viewer),
+      reminder: reminderFromPreset(
+        categoryReminderPresets.find(
+          (preset) => preset.categoryId === selectedCategory
+        )
+      ),
+    })
   }
 
   function openEditor(task: HouseholdTask) {
@@ -2085,6 +2201,7 @@ function CalendarHome({ onSignOut }: { onSignOut: () => Promise<void> }) {
       {composerDate && (
         <TaskComposer
           categories={calendarCategories}
+          categoryReminderPresets={categoryReminderPresets}
           date={composerDate}
           draft={draft}
           editingTask={editingTask}
@@ -2106,10 +2223,13 @@ function CalendarHome({ onSignOut }: { onSignOut: () => Promise<void> }) {
       {activePanel === "settings" && (
         <SettingsPanel
           categories={calendarCategories}
+          categoryReminderPresets={categoryReminderPresets}
           onCategoriesChange={setCategories}
+          onCategoryReminderPresetsChange={setCategoryReminderPresets}
           onClose={() => setActivePanel(undefined)}
-          onReminderProfilesChange={setReminderProfiles}
-          reminderProfiles={reminderProfiles}
+          onReminderProfileChange={setReminderProfile}
+          reminderProfile={reminderProfile}
+          viewer={viewer}
         />
       )}
     </main>

@@ -52,14 +52,28 @@ export interface HouseholdTask {
 
 export interface TaskReminderSettings {
   enabled: boolean
-  offsetMinutes: number
+  timings: ReminderTiming[]
   email: boolean
   sms: boolean
 }
 
+export type ReminderTiming =
+  | "day-before-0930"
+  | "morning-of-0930"
+  | "15"
+  | "30"
+  | "60"
+  | "120"
+  | "1440"
+  | "2880"
+
+export interface CategoryReminderPreset {
+  categoryId: CategoryId
+  timings: ReminderTiming[]
+}
+
 export interface MemberReminderProfile {
   memberId: MemberId
-  password: string
   email: string
   phone: string
   emailEnabled: boolean
@@ -162,6 +176,7 @@ export const STORAGE_KEYS = {
   categories: "household-planner-categories-v1",
   notes: "household-planner-notes-v1",
   reminderProfiles: "household-planner-reminder-profiles-v1",
+  reminderCategoryPresets: "household-planner-reminder-category-presets-v1",
   notifications: "household-planner-notifications-v1",
   controls: "household-planner-controls-v1",
 } as const
@@ -214,7 +229,7 @@ export function createCategoryId(label: string) {
 export function defaultTaskReminder(): TaskReminderSettings {
   return {
     enabled: false,
-    offsetMinutes: 30,
+    timings: [],
     email: true,
     sms: false,
   }
@@ -467,10 +482,20 @@ export function buildSeedNotes(): NotePage[] {
 export function buildSeedReminderProfiles(): MemberReminderProfile[] {
   return HOUSEHOLD_MEMBERS.map((member) => ({
     memberId: member.id,
-    password: "",
     email: "",
     phone: "",
     emailEnabled: true,
     smsEnabled: false,
   }))
+}
+
+export function buildSeedCategoryReminderPresets(): CategoryReminderPreset[] {
+  return [
+    {
+      categoryId: "classes",
+      timings: ["day-before-0930", "morning-of-0930", "30"],
+    },
+    { categoryId: "payments", timings: ["2880"] },
+    { categoryId: "appointments", timings: ["1440", "30"] },
+  ]
 }
