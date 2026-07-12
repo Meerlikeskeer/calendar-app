@@ -665,6 +665,11 @@ function CalendarEvent({
         type="button"
         onClick={(event) => {
           event.stopPropagation()
+          if (task.externalUrl) {
+            window.open(task.externalUrl, "_blank", "noopener,noreferrer")
+            return
+          }
+
           onEdit(task)
         }}
       >
@@ -2416,8 +2421,7 @@ function CalendarHome({
                     isOutsideMonth ? "bg-muted/25 text-muted-foreground" : "bg-background"
                   } ${isSelected ? "ring-2 ring-inset ring-foreground" : ""}`}
                   onClick={(event) => {
-                    event.stopPropagation()
-                    setSelectedDate(startOfDay(day))
+                    openContextMenu(event, day)
                   }}
                   onContextMenu={(event) => openContextMenu(event, day)}
                 >
@@ -2428,8 +2432,7 @@ function CalendarHome({
                       }`}
                       type="button"
                       onClick={(event) => {
-                        event.stopPropagation()
-                        setSelectedDate(startOfDay(day))
+                        openContextMenu(event, day)
                       }}
                     >
                       {day.getDate()}
