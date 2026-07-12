@@ -63,6 +63,15 @@ export default defineSchema({
     .index("by_authSubject", ["authSubject"])
     .index("by_isDemo", ["isDemo"])
     .index("by_sortOrder", ["sortOrder"]),
+  householdContactProfiles: defineTable({
+    authUserId: v.id("users"),
+    email: v.string(),
+    phone: v.string(),
+    emailEnabled: v.boolean(),
+    smsEnabled: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_authUserId", ["authUserId"]),
   householdTasks: defineTable({
     title: v.string(),
     assignedTo: v.id("householdUsers"),

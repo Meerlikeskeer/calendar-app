@@ -78,10 +78,17 @@ import type {
 } from "@/lib/household-data"
 
 const convexEnabled = Boolean(import.meta.env.VITE_CONVEX_URL)
+const PENDING_CONTACT_PROFILE_KEY = "household-planner-pending-contact-profile"
 
 const householdApi = {
   getCurrentViewer: makeFunctionReference<"query">(
     "household:getCurrentViewer"
+  ),
+  getMyContactProfile: makeFunctionReference<"query">(
+    "household:getMyContactProfile"
+  ),
+  saveMyContactProfile: makeFunctionReference<"mutation">(
+    "household:saveMyContactProfile"
   ),
   listAggregateTasks: makeFunctionReference<"query">(
     "household:listAggregateTasks"
@@ -1247,6 +1254,8 @@ function SettingsPanel({
 }) {
   const [categoryName, setCategoryName] = useState("")
   const [categoryColor, setCategoryColor] = useState("#64748b")
+  const [selectedReminderCategoryId, setSelectedReminderCategoryId] =
+    useState<CategoryId>("classes")
   const defaultCategoryIds = new Set(TASK_CATEGORIES.map((category) => category.id))
 
   function addCategory(event: FormEvent<HTMLFormElement>) {
@@ -1419,45 +1428,56 @@ function SettingsPanel({
               These timings are applied when you choose a category for a new item.
             </p>
           </div>
-          <div className="grid gap-3">
-            {categories.map((category) => {
-              const timings =
-                categoryReminderPresets.find(
-                  (preset) => preset.categoryId === category.id
-                )?.timings ?? []
+          {(() => {
+            const selectedCategory =
+              categories.find(
+                (category) => category.id === selectedReminderCategoryId
+              ) ?? categories[0]
+            const timings =
+              categoryReminderPresets.find(
+                (preset) => preset.categoryId === selectedCategory.id
+              )?.timings ?? []
 
-              return (
-                <div key={category.id} className="grid gap-2 rounded-lg border bg-card p-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold">
-                    <span className="size-2.5 rounded-full" style={{ backgroundColor: category.color }} />
-                    {category.label}
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {REMINDER_OPTIONS.map((option) => (
-                      <label
-                        key={option.value}
-                        className="flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium"
-                      >
-                        <input
-                          checked={timings.includes(option.value as ReminderTiming)}
-                          className="size-4"
-                          type="checkbox"
-                          onChange={(event) =>
-                            updateCategoryReminderPreset(
-                              category.id,
-                              option.value as ReminderTiming,
-                              event.currentTarget.checked
-                            )
-                          }
-                        />
-                        {option.label}
-                      </label>
-                    ))}
-                  </div>
+            return (
+              <div className="grid gap-3">
+                <label className="grid gap-1 text-sm font-medium">
+                  Category
+                  <CalendarSelect<CategoryId>
+                    ariaLabel="Reminder category"
+                    options={categories.map((category) => ({
+                      color: category.color,
+                      label: category.label,
+                      value: category.id,
+                    }))}
+                    value={selectedCategory.id}
+                    onChange={setSelectedReminderCategoryId}
+                  />
+                </label>
+                <div className="grid gap-2 rounded-lg border bg-card p-3 sm:grid-cols-2">
+                  {REMINDER_OPTIONS.map((option) => (
+                    <label
+                      key={option.value}
+                      className="flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium"
+                    >
+                      <input
+                        checked={timings.includes(option.value as ReminderTiming)}
+                        className="size-4"
+                        type="checkbox"
+                        onChange={(event) =>
+                          updateCategoryReminderPreset(
+                            selectedCategory.id,
+                            option.value as ReminderTiming,
+                            event.currentTarget.checked
+                          )
+                        }
+                      />
+                      {option.label}
+                    </label>
+                  ))}
                 </div>
-              )
-            })}
-          </div>
+              </div>
+            )
+          })()}
         </section>
 
         <form className="grid gap-3 rounded-lg border bg-background p-3" onSubmit={addCategory}>
@@ -1550,6 +1570,8 @@ function SignInScreen() {
   const { signIn } = useAuthActions()
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
+  const [contactEmail, setContactEmail] = useState("")
+  const [contactPhone, setContactPhone] = useState("")
   const [setupCode, setSetupCode] = useState("")
   const [isSettingUp, setIsSettingUp] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -1567,9 +1589,24 @@ function SignInScreen() {
       return
     }
 
+    if (isSettingUp && (!contactEmail.trim() || !contactPhone.trim())) {
+      toast.error("Enter an email address and phone number for reminders.")
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
+      if (isSettingUp) {
+        window.sessionStorage.setItem(
+          PENDING_CONTACT_PROFILE_KEY,
+          JSON.stringify({
+            email: contactEmail.trim(),
+            phone: contactPhone.trim(),
+          })
+        )
+      }
+
       await signIn("password", {
         flow: isSettingUp ? "signUp" : "signIn",
         username: username.trim(),
@@ -1577,6 +1614,7 @@ function SignInScreen() {
         ...(isSettingUp ? { setupCode } : {}),
       })
     } catch {
+      window.sessionStorage.removeItem(PENDING_CONTACT_PROFILE_KEY)
       toast.error(
         isSettingUp
           ? "Could not create the account. Check the setup code and details."
@@ -1628,17 +1666,41 @@ function SignInScreen() {
             />
           </label>
           {isSettingUp && (
-            <label className="grid gap-1.5 text-sm font-medium">
-              Household setup code
-              <Input
-                autoComplete="one-time-code"
-                className="h-10"
-                disabled={isSubmitting}
-                onChange={(event) => setSetupCode(event.currentTarget.value)}
-                type="password"
-                value={setupCode}
-              />
-            </label>
+            <>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Email for reminders
+                <Input
+                  autoComplete="email"
+                  className="h-10"
+                  disabled={isSubmitting}
+                  onChange={(event) => setContactEmail(event.currentTarget.value)}
+                  type="email"
+                  value={contactEmail}
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Phone for reminders
+                <Input
+                  autoComplete="tel"
+                  className="h-10"
+                  disabled={isSubmitting}
+                  onChange={(event) => setContactPhone(event.currentTarget.value)}
+                  type="tel"
+                  value={contactPhone}
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Household setup code
+                <Input
+                  autoComplete="one-time-code"
+                  className="h-10"
+                  disabled={isSubmitting}
+                  onChange={(event) => setSetupCode(event.currentTarget.value)}
+                  type="password"
+                  value={setupCode}
+                />
+              </label>
+            </>
           )}
         </div>
 
@@ -1717,6 +1779,8 @@ function CalendarHome({
   onSignOut: () => Promise<void>
   viewer: MemberId
 }) {
+  const contactProfile = useQuery(householdApi.getMyContactProfile, {})
+  const saveContactProfile = useMutation(householdApi.saveMyContactProfile)
   const [tasks, setTasks] = usePersistentState(
     STORAGE_KEYS.tasks,
     buildSeedTasks
@@ -1779,6 +1843,54 @@ function CalendarHome({
   const pendingCount = tasks.filter((task) => task.status === "Pending").length
   const doneCount = tasks.length - pendingCount
   const latestMissedTask = missedTasks[missedTasks.length - 1]
+
+  useEffect(() => {
+    if (!contactProfile) {
+      return
+    }
+
+    const pending = window.sessionStorage.getItem(PENDING_CONTACT_PROFILE_KEY)
+
+    if (pending) {
+      try {
+        const parsed = JSON.parse(pending) as { email?: string; phone?: string }
+        const next = {
+          memberId: viewer,
+          email: parsed.email?.trim() ?? "",
+          phone: parsed.phone?.trim() ?? "",
+          emailEnabled: true,
+          smsEnabled: true,
+        }
+
+        setReminderProfile(next)
+        void saveContactProfile({
+          email: next.email,
+          phone: next.phone,
+          emailEnabled: next.emailEnabled,
+          smsEnabled: next.smsEnabled,
+        })
+          .then(() => window.sessionStorage.removeItem(PENDING_CONTACT_PROFILE_KEY))
+          .catch(() => toast.error("Could not save your reminder contacts."))
+        return
+      } catch {
+        window.sessionStorage.removeItem(PENDING_CONTACT_PROFILE_KEY)
+      }
+    }
+
+    setReminderProfile({ memberId: viewer, ...contactProfile })
+  }, [contactProfile, saveContactProfile, setReminderProfile, viewer])
+
+  function updateReminderProfile(profile: MemberReminderProfile) {
+    setReminderProfile(profile)
+    void saveContactProfile({
+      email: profile.email,
+      phone: profile.phone,
+      emailEnabled: profile.emailEnabled,
+      smsEnabled: profile.smsEnabled,
+    }).catch(() => {
+      toast.error("Could not save your reminder contacts.")
+    })
+  }
 
   useEffect(() => {
     setCategories((current) =>
@@ -2227,7 +2339,7 @@ function CalendarHome({
           onCategoriesChange={setCategories}
           onCategoryReminderPresetsChange={setCategoryReminderPresets}
           onClose={() => setActivePanel(undefined)}
-          onReminderProfileChange={setReminderProfile}
+          onReminderProfileChange={updateReminderProfile}
           reminderProfile={reminderProfile}
           viewer={viewer}
         />

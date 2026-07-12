@@ -91,6 +91,17 @@ async function requireAuthenticated(ctx: any) {
   return identity
 }
 
+async function requireAuthUserId(ctx: any) {
+  await requireAuthenticated(ctx)
+  const authUserId = await getAuthUserId(ctx)
+
+  if (!authUserId) {
+    fail("UNAUTHENTICATED", "A valid household account is required")
+  }
+
+  return authUserId
+}
+
 async function getUserOrThrow(ctx: any, userId: any) {
   const user = await ctx.db.get("householdUsers", userId)
 
@@ -236,6 +247,61 @@ export const getCurrentViewer = query({
       : ""
 
     return { username }
+  },
+})
+
+export const getMyContactProfile = query({
+  args: {},
+  handler: async (ctx) => {
+    const authUserId = await requireAuthUserId(ctx)
+    const profile = await ctx.db
+      .query("householdContactProfiles")
+      .withIndex("by_authUserId", (q: any) => q.eq("authUserId", authUserId))
+      .unique()
+
+    return profile ?? {
+      email: "",
+      phone: "",
+      emailEnabled: true,
+      smsEnabled: false,
+    }
+  },
+})
+
+export const saveMyContactProfile = mutation({
+  args: {
+    email: v.string(),
+    phone: v.string(),
+    emailEnabled: v.boolean(),
+    smsEnabled: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const authUserId = await requireAuthUserId(ctx)
+    const now = Date.now()
+    const profile = await ctx.db
+      .query("householdContactProfiles")
+      .withIndex("by_authUserId", (q: any) => q.eq("authUserId", authUserId))
+      .unique()
+    const patch = {
+      email: optionalText(args.email) ?? "",
+      phone: optionalText(args.phone) ?? "",
+      emailEnabled: args.emailEnabled,
+      smsEnabled: args.smsEnabled,
+      updatedAt: now,
+    }
+
+    if (profile) {
+      await ctx.db.patch(profile._id, patch)
+      return await ctx.db.get(profile._id)
+    }
+
+    const profileId = await ctx.db.insert("householdContactProfiles", {
+      authUserId,
+      ...patch,
+      createdAt: now,
+    })
+
+    return await ctx.db.get(profileId)
   },
 })
 
