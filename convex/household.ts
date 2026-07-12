@@ -72,6 +72,16 @@ async function getAuthSubject(ctx: any) {
   }
 }
 
+async function requireAuthenticated(ctx: any) {
+  const identity = await ctx.auth.getUserIdentity()
+
+  if (!identity) {
+    fail("UNAUTHENTICATED", "Sign in is required to access this household")
+  }
+
+  return identity
+}
+
 async function getUserOrThrow(ctx: any, userId: any) {
   const user = await ctx.db.get("householdUsers", userId)
 
@@ -198,6 +208,7 @@ function atDay(offsetDays: number, hour: number, minute = 0) {
 export const listHouseholdUsers = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuthenticated(ctx)
     const users = await ctx.db.query("householdUsers").collect()
 
     return sortUsers(users)
@@ -212,6 +223,7 @@ export const listAggregateTasks = query({
     communalOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await requireAuthenticated(ctx)
     const users = sortUsers(await ctx.db.query("householdUsers").collect())
     let tasks = await ctx.db.query("householdTasks").collect()
 
@@ -245,6 +257,7 @@ export const listTasksByUser = query({
     includeDone: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await requireAuthenticated(ctx)
     const users = sortUsers(await ctx.db.query("householdUsers").collect())
     let tasks = await ctx.db
       .query("householdTasks")
@@ -267,6 +280,7 @@ export const listNotificationLog = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireAuthenticated(ctx)
     let notifications = await ctx.db.query("notificationLog").collect()
 
     if (args.memberId !== undefined) {
@@ -286,6 +300,7 @@ export const listNotificationLog = query({
 export const listHomeControls = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuthenticated(ctx)
     const controls = await ctx.db.query("homeControls").collect()
 
     return controls.sort((first, second) => first.label.localeCompare(second.label))
@@ -303,6 +318,7 @@ export const createHouseholdUser = mutation({
     sortOrder: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireAuthenticated(ctx)
     const now = Date.now()
     const existingUsers = await ctx.db.query("householdUsers").collect()
     const authSubject = args.authSubject ?? (await getAuthSubject(ctx))
@@ -345,6 +361,7 @@ export const createTask = mutation({
     reminder: v.optional(taskReminder),
   },
   handler: async (ctx, args) => {
+    await requireAuthenticated(ctx)
     requireTimeRange(args.startTime, args.endTime)
     await getUserOrThrow(ctx, args.assignedTo)
     await getUserOrThrow(ctx, args.createdBy)
@@ -405,6 +422,7 @@ export const updateTask = mutation({
     reminder: v.optional(taskReminder),
   },
   handler: async (ctx, args) => {
+    await requireAuthenticated(ctx)
     const task = await getTaskOrThrow(ctx, args.taskId)
     const startTime = args.startTime ?? task.startTime
     const endTime = args.endTime ?? task.endTime
@@ -467,6 +485,7 @@ export const assignTask = mutation({
     userId: v.id("householdUsers"),
   },
   handler: async (ctx, args) => {
+    await requireAuthenticated(ctx)
     const task = await getTaskOrThrow(ctx, args.taskId)
     const user = await getUserOrThrow(ctx, args.userId)
 
@@ -496,6 +515,7 @@ export const toggleTaskDone = mutation({
     status: v.optional(taskStatus),
   },
   handler: async (ctx, args) => {
+    await requireAuthenticated(ctx)
     const task = await getTaskOrThrow(ctx, args.taskId)
     const status = args.status ?? (task.status === "Done" ? "Pending" : "Done")
     const patch: Record<string, unknown> = {
@@ -526,6 +546,7 @@ export const notifyMissedTask = mutation({
     taskId: v.id("householdTasks"),
   },
   handler: async (ctx, args) => {
+    await requireAuthenticated(ctx)
     const task = await getTaskOrThrow(ctx, args.taskId)
     const now = Date.now()
 
@@ -575,6 +596,7 @@ export const removeTask = mutation({
     taskId: v.id("householdTasks"),
   },
   handler: async (ctx, args) => {
+    await requireAuthenticated(ctx)
     const task = await getTaskOrThrow(ctx, args.taskId)
 
     await ctx.db.delete(args.taskId)
@@ -598,6 +620,7 @@ export const sendMorningDigest = mutation({
     memberId: v.id("householdUsers"),
   },
   handler: async (ctx, args) => {
+    await requireAuthenticated(ctx)
     const member = await getUserOrThrow(ctx, args.memberId)
     const dayStart = new Date()
     dayStart.setHours(0, 0, 0, 0)
@@ -642,6 +665,7 @@ export const updateHomeControl = mutation({
     updatedBy: v.optional(v.id("householdUsers")),
   },
   handler: async (ctx, args) => {
+    await requireAuthenticated(ctx)
     const control = await ctx.db.get(args.controlId)
 
     if (!control) {
@@ -682,6 +706,7 @@ export const seedDemoHousehold = mutation({
     reset: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await requireAuthenticated(ctx)
     if (args.reset === true) {
       await deleteDemoRows(ctx)
     }

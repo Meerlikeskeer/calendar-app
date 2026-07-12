@@ -4,11 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "convex dev --start \"bun run dev:web\"",
+    "dev": "bun node_modules/convex/bin/main.js dev --start \"bun run dev:web\"",
     "dev:web": "bun node_modules/vite/bin/vite.js --host 0.0.0.0",
-    "build": "tsc -b && bun node_modules/vite/bin/vite.js build",
+    "convex:login": "bun node_modules/convex/bin/main.js login",
+    "convex:configure": "bun node_modules/convex/bin/main.js dev --once --configure",
+    "convex:deploy": "bun node_modules/convex/bin/main.js deploy",
+    "build": "bun node_modules/typescript/bin/tsc -b && bun node_modules/vite/bin/vite.js build",
     "lint": "bun node_modules/oxlint/bin/oxlint",
-    "typecheck": "tsc -b",
+    "typecheck": "bun node_modules/typescript/bin/tsc -b",
     "codex:run": "powershell -ExecutionPolicy Bypass -File ./scripts/codex-run.ps1",
     "preview": "bun node_modules/vite/bin/vite.js preview"
   },

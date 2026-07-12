@@ -6,6 +6,10 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   HomeIcon,
+  LoaderCircleIcon,
+  LockKeyholeIcon,
+  LogInIcon,
+  LogOutIcon,
   PlusIcon,
   SettingsIcon,
   Trash2Icon,
@@ -13,6 +17,7 @@ import {
 } from "lucide-react"
 import { useMutation, useQuery } from "convex/react"
 import { makeFunctionReference } from "convex/server"
+import { useAuthActions, useConvexAuth } from "@convex-dev/auth/react"
 import {
   useEffect,
   useMemo,
@@ -1254,7 +1259,6 @@ function SettingsPanel({
                 reminderProfiles.find((item) => item.memberId === member.id) ??
                 {
                   memberId: member.id,
-                  username: member.name.toLowerCase(),
                   password: "",
                   email: "",
                   phone: "",
@@ -1283,18 +1287,6 @@ function SettingsPanel({
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="grid gap-1 text-sm font-medium">
-                      Username
-                      <Input
-                        className="h-10"
-                        value={profile.username}
-                        onChange={(event) =>
-                          updateReminderProfile(member.id, {
-                            username: event.currentTarget.value,
-                          })
-                        }
-                      />
-                    </label>
                     <label className="grid gap-1 text-sm font-medium">
                       Password
                       <Input
@@ -1443,7 +1435,175 @@ function SettingsPanel({
   )
 }
 
+function LoadingScreen() {
+  return (
+    <main className="grid min-h-svh place-items-center bg-background px-4 text-foreground">
+      <div className="grid w-full max-w-sm justify-items-center gap-4 text-center">
+        <div className="flex size-12 items-center justify-center rounded-lg bg-foreground text-background">
+          <LoaderCircleIcon className="size-5 animate-spin" aria-hidden="true" />
+        </div>
+        <div>
+          <h1 className="text-lg font-semibold">Universal Household Planner</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Checking secure access...</p>
+        </div>
+      </div>
+    </main>
+  )
+}
+
+function SignInScreen() {
+  const { signIn } = useAuthActions()
+  const [username, setUsername] = useState("")
+  const [password, setPassword] = useState("")
+  const [setupCode, setSetupCode] = useState("")
+  const [isSettingUp, setIsSettingUp] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!username.trim() || !password) {
+      toast.error("Enter both your username and password.")
+      return
+    }
+
+    if (isSettingUp && !setupCode) {
+      toast.error("Enter the household setup code.")
+      return
+    }
+
+    setIsSubmitting(true)
+
+    try {
+      await signIn("password", {
+        flow: isSettingUp ? "signUp" : "signIn",
+        username: username.trim(),
+        password,
+        ...(isSettingUp ? { setupCode } : {}),
+      })
+    } catch {
+      toast.error(
+        isSettingUp
+          ? "Could not create the account. Check the setup code and details."
+          : "Could not sign in. Check your username and password."
+      )
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <main className="grid min-h-svh place-items-center bg-background px-4 py-8 text-foreground">
+      <form
+        className="grid w-full max-w-sm gap-5 rounded-lg border bg-card p-5 shadow-sm"
+        onSubmit={submit}
+      >
+        <div className="grid gap-3">
+          <div className="flex size-11 items-center justify-center rounded-lg bg-foreground text-background">
+            <LockKeyholeIcon className="size-5" aria-hidden="true" />
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold">Household sign in</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Sign in to open the shared calendar.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-3">
+          <label className="grid gap-1.5 text-sm font-medium">
+            Username
+            <Input
+              autoComplete="username"
+              className="h-10"
+              disabled={isSubmitting}
+              onChange={(event) => setUsername(event.currentTarget.value)}
+              value={username}
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium">
+            Password
+            <Input
+              autoComplete={isSettingUp ? "new-password" : "current-password"}
+              className="h-10"
+              disabled={isSubmitting}
+              onChange={(event) => setPassword(event.currentTarget.value)}
+              type="password"
+              value={password}
+            />
+          </label>
+          {isSettingUp && (
+            <label className="grid gap-1.5 text-sm font-medium">
+              Household setup code
+              <Input
+                autoComplete="one-time-code"
+                className="h-10"
+                disabled={isSubmitting}
+                onChange={(event) => setSetupCode(event.currentTarget.value)}
+                type="password"
+                value={setupCode}
+              />
+            </label>
+          )}
+        </div>
+
+        <Button className="h-10" disabled={isSubmitting} type="submit">
+          {isSubmitting ? (
+            <LoaderCircleIcon className="size-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <LogInIcon className="size-4" aria-hidden="true" />
+          )}
+          {isSettingUp ? "Create household account" : "Sign in"}
+        </Button>
+
+        <button
+          className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          disabled={isSubmitting}
+          onClick={() => setIsSettingUp((current) => !current)}
+          type="button"
+        >
+          {isSettingUp ? "I already have an account" : "Set up an approved account"}
+        </button>
+      </form>
+    </main>
+  )
+}
+
+function SecureCalendarGate() {
+  const { isAuthenticated, isLoading } = useConvexAuth()
+  const { signOut } = useAuthActions()
+
+  async function handleSignOut() {
+    await signOut()
+    toast.success("Signed out.")
+  }
+
+  if (isLoading) {
+    return <LoadingScreen />
+  }
+
+  return isAuthenticated ? <CalendarHome onSignOut={handleSignOut} /> : <SignInScreen />
+}
+
+function BackendRequiredScreen() {
+  return (
+    <main className="grid min-h-svh place-items-center bg-background px-4 text-foreground">
+      <div className="grid w-full max-w-sm gap-3 rounded-lg border bg-card p-5 shadow-sm">
+        <LockKeyholeIcon className="size-5" aria-hidden="true" />
+        <h1 className="text-lg font-semibold">Secure access needs configuration</h1>
+        <p className="text-sm text-muted-foreground">
+          Connect this deployment to Convex before opening the household calendar.
+        </p>
+      </div>
+    </main>
+  )
+}
+
 export function HomeRoute() {
+  return convexEnabled ? <SecureCalendarGate /> : <BackendRequiredScreen />
+}
+
+function CalendarHome({ onSignOut }: { onSignOut: () => Promise<void> }) {
   const [tasks, setTasks] = usePersistentState(
     STORAGE_KEYS.tasks,
     buildSeedTasks
@@ -1706,12 +1866,10 @@ export function HomeRoute() {
       className="flex min-h-svh flex-col bg-background text-foreground"
       onClick={() => setContextMenu(undefined)}
     >
-      {convexEnabled && (
-        <ConvexCalendarBridge
-          setConvexActions={setConvexActions}
-          setTasks={setTasks}
-        />
-      )}
+      <ConvexCalendarBridge
+        setConvexActions={setConvexActions}
+        setTasks={setTasks}
+      />
 
       <header className="border-b bg-background/95 backdrop-blur">
         <div className="flex min-h-16 items-center justify-between gap-3 px-4 py-3">
@@ -1765,6 +1923,14 @@ export function HomeRoute() {
               onClick={() => setActivePanel("settings")}
             >
               <SettingsIcon className="size-4" aria-hidden="true" />
+            </Button>
+            <Button
+              aria-label="Sign out"
+              size="icon"
+              variant="outline"
+              onClick={() => void onSignOut()}
+            >
+              <LogOutIcon className="size-4" aria-hidden="true" />
             </Button>
             <ThemeMenu />
           </div>

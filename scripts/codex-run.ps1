@@ -58,7 +58,7 @@ $envPath = Join-Path $RepoRoot ".env.local"
 if (-not (Test-Path $envPath)) {
   Write-Host "Configuring Convex. When prompted, choose your personal team."
 
-  $configureArgs = @("x", "convex", "dev", "--once", "--configure")
+  $configureArgs = @("node_modules/convex/bin/main.js", "dev", "--once", "--configure")
   if ($env:CONVEX_TEAM) {
     $configureArgs += @("--team", $env:CONVEX_TEAM)
   }

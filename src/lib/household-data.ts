@@ -59,7 +59,6 @@ export interface TaskReminderSettings {
 
 export interface MemberReminderProfile {
   memberId: MemberId
-  username: string
   password: string
   email: string
   phone: string
@@ -468,7 +467,6 @@ export function buildSeedNotes(): NotePage[] {
 export function buildSeedReminderProfiles(): MemberReminderProfile[] {
   return HOUSEHOLD_MEMBERS.map((member) => ({
     memberId: member.id,
-    username: member.name.toLowerCase(),
     password: "",
     email: "",
     phone: "",
