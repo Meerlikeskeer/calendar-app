@@ -227,7 +227,8 @@ export const getCurrentViewer = query({
   args: {},
   handler: async (ctx) => {
     const identity = await requireAuthenticated(ctx)
-    const email = identity.email?.toLowerCase() ?? ""
+    const authUser = await ctx.db.get("users", identity.subject as any)
+    const email = (identity.email ?? authUser?.email ?? "").toLowerCase()
     const username = email.endsWith("@household.local")
       ? email.slice(0, -"@household.local".length)
       : ""
