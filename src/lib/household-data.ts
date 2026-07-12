@@ -46,6 +46,7 @@ export interface HouseholdTask {
   resetCadence: ResetCadence
   createdBy: MemberId
   externalUrl?: string
+  notes?: string
   completedAt?: string
   reminder: TaskReminderSettings
 }

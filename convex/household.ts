@@ -506,6 +506,7 @@ export const createTask = mutation({
     resetCadence: v.optional(resetCadence),
     createdBy: v.id("householdUsers"),
     externalUrl: v.optional(v.string()),
+    notes: v.optional(v.string()),
     reminder: v.optional(taskReminder),
   },
   handler: async (ctx, args) => {
@@ -536,9 +537,14 @@ export const createTask = mutation({
       updatedAt: now,
     }
     const externalUrl = optionalText(args.externalUrl)
+    const notes = optionalText(args.notes)
 
     if (externalUrl !== undefined) {
       task.externalUrl = externalUrl
+    }
+
+    if (notes !== undefined) {
+      task.notes = notes
     }
 
     const taskId = await ctx.db.insert("householdTasks", task)
@@ -567,6 +573,7 @@ export const updateTask = mutation({
     communal: v.optional(v.boolean()),
     resetCadence: v.optional(resetCadence),
     externalUrl: v.optional(v.union(v.string(), v.null())),
+    notes: v.optional(v.union(v.string(), v.null())),
     reminder: v.optional(taskReminder),
   },
   handler: async (ctx, args) => {
@@ -605,6 +612,10 @@ export const updateTask = mutation({
 
     if (args.externalUrl !== undefined) {
       patch.externalUrl = optionalText(args.externalUrl)
+    }
+
+    if (args.notes !== undefined) {
+      patch.notes = optionalText(args.notes)
     }
 
     if (args.reminder !== undefined) {

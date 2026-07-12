@@ -37,7 +37,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   addDays,
-  buildSeedNotes,
   buildSeedNotifications,
   buildSeedCategoryReminderPresets,
   buildSeedReminderProfiles,
@@ -72,8 +71,8 @@ import type {
   ResetCadence,
   ReminderTiming,
   TaskStatus,
-  NotePage,
   NotificationRecord,
+  NotePage,
   TaskCategory,
   TaskReminderSettings,
 } from "@/lib/household-data"
@@ -126,6 +125,7 @@ interface TaskDraft {
   communal: boolean
   resetCadence: ResetCadence
   externalUrl: string
+  notes: string
   reminder: TaskReminderSettings
 }
 
@@ -222,6 +222,7 @@ function createDraftForDate(
     communal: false,
     resetCadence: "none",
     externalUrl: "",
+    notes: "",
     reminder: defaultTaskReminder(),
   }
 }
@@ -236,6 +237,7 @@ function draftFromTask(task: HouseholdTask): TaskDraft {
     communal: task.communal,
     resetCadence: task.resetCadence,
     externalUrl: task.externalUrl ?? "",
+    notes: task.notes ?? "",
     reminder: task.reminder ?? defaultTaskReminder(),
   }
 }
@@ -523,6 +525,7 @@ function ConvexCalendarBridge({
           resetCadence: task.resetCadence,
           createdBy,
           externalUrl: task.externalUrl,
+          notes: task.notes,
           reminder: normalizeTask({
             id: task._id,
             title: task.title,
@@ -577,6 +580,7 @@ function ConvexCalendarBridge({
           resetCadence: task.resetCadence,
           createdBy: requireUserId(task.createdBy),
           externalUrl: task.externalUrl,
+          notes: task.notes,
           reminder: task.reminder,
         })
       },
@@ -600,6 +604,7 @@ function ConvexCalendarBridge({
           communal: task.communal,
           resetCadence: task.resetCadence,
           externalUrl: task.externalUrl ?? null,
+          notes: task.notes ?? null,
           reminder: task.reminder,
         })
       },
@@ -794,12 +799,19 @@ function TaskComposer({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-end bg-black/15 p-3 backdrop-blur-[2px] sm:place-items-center">
+    <div
+      className="fixed inset-0 z-50 grid place-items-end bg-black/15 p-3 backdrop-blur-[2px] sm:place-items-center"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose()
+        }
+      }}
+    >
       <form
-        className="grid max-h-[calc(100svh-1.5rem)] w-full max-w-xl gap-4 overflow-auto rounded-lg border bg-popover p-4 text-popover-foreground shadow-2xl"
+        className="grid max-h-[calc(100svh-1.5rem)] w-full max-w-5xl gap-4 overflow-auto rounded-lg border bg-popover p-5 text-popover-foreground shadow-2xl lg:grid-cols-2"
         onSubmit={onSubmit}
       >
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-4 lg:col-span-2">
           <div>
             <p className="text-sm font-medium text-muted-foreground">
               {formatFullDate(date)}
@@ -819,7 +831,7 @@ function TaskComposer({
           </Button>
         </div>
 
-        <label className="grid gap-1 text-sm font-medium">
+        <label className="grid gap-1 text-sm font-medium lg:col-span-2">
           Title
           <Input
             autoFocus
@@ -914,7 +926,19 @@ function TaskComposer({
           />
         </label>
 
-        <section className="grid gap-3 rounded-lg border bg-background p-3">
+        <label className="grid gap-1 text-sm font-medium">
+          Notes
+          <textarea
+            className="min-h-24 w-full resize-y rounded-lg border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+            placeholder="Add context, instructions, or links for this item"
+            value={draft.notes}
+            onChange={(event) =>
+              onDraftChange({ ...draft, notes: event.currentTarget.value })
+            }
+          />
+        </label>
+
+        <section className="grid gap-3 rounded-lg border bg-background p-3 lg:row-span-2">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold">Reminder</h3>
@@ -1055,7 +1079,7 @@ function TaskComposer({
           </label>
         </div>
 
-        <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-between">
+        <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-between lg:col-span-2">
           <div>
             {editingTask && (
               <Button
@@ -1083,7 +1107,7 @@ function TaskComposer({
   )
 }
 
-function NotesPanel({
+export function NotesPanel({
   notes,
   onClose,
   onNotesChange,
@@ -1311,7 +1335,14 @@ function SettingsPanel({
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/15 p-3 backdrop-blur-[2px]">
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/15 p-3 backdrop-blur-[2px]"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose()
+        }
+      }}
+    >
       <section className="grid max-h-[calc(100svh-1.5rem)] w-full max-w-5xl gap-4 overflow-y-auto rounded-lg border bg-popover p-5 text-popover-foreground shadow-2xl lg:overflow-visible">
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
@@ -1544,7 +1575,14 @@ function CategoryManagerPanel({
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/15 p-3 backdrop-blur-[2px]">
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/15 p-3 backdrop-blur-[2px]"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose()
+        }
+      }}
+    >
       <section className="grid max-h-[calc(100svh-1.5rem)] w-full max-w-2xl gap-4 overflow-auto rounded-lg border bg-popover p-4 text-popover-foreground shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
@@ -1861,7 +1899,6 @@ function CalendarHome({
     STORAGE_KEYS.categories,
     () => TASK_CATEGORIES
   )
-  const [notes, setNotes] = usePersistentState(STORAGE_KEYS.notes, buildSeedNotes)
   const [notifications, setNotifications] = usePersistentState(
     STORAGE_KEYS.notifications,
     buildSeedNotifications
@@ -1883,9 +1920,7 @@ function CalendarHome({
   const [draft, setDraft] = useState(() => createDraftForDate(new Date()))
   const [editingTask, setEditingTask] = useState<HouseholdTask>()
   const [convexActions, setConvexActions] = useState<ConvexActions>()
-  const [activePanel, setActivePanel] = useState<
-    "notes" | "settings" | "categories"
-  >()
+  const [activePanel, setActivePanel] = useState<"settings" | "categories">()
   const reportedMissedTaskIds = useRef(new Set<string>())
 
   const calendarCategories = categories.length > 0 ? categories : TASK_CATEGORIES
@@ -2105,6 +2140,7 @@ function CalendarHome({
       resetCadence: draft.resetCadence,
       createdBy: editingTask?.createdBy ?? "neelam",
       externalUrl: draft.externalUrl.trim() || undefined,
+      notes: draft.notes.trim() || undefined,
       completedAt: editingTask?.completedAt,
       reminder: draft.reminder,
     }
@@ -2221,10 +2257,6 @@ function CalendarHome({
             <Button onClick={() => openComposer(selectedDate)}>
               <PlusIcon className="size-4" aria-hidden="true" />
               <span className="hidden sm:inline">New</span>
-            </Button>
-            <Button variant="outline" onClick={() => setActivePanel("notes")}>
-              <BookOpenIcon className="size-4" aria-hidden="true" />
-              <span className="hidden sm:inline">Notes</span>
             </Button>
             <Button variant="outline" onClick={() => setActivePanel("categories")}>
               <TagsIcon className="size-4" aria-hidden="true" />
@@ -2407,14 +2439,6 @@ function CalendarHome({
           onDraftChange={setDraft}
           onRemove={removeTask}
           onSubmit={submitTask}
-        />
-      )}
-
-      {activePanel === "notes" && (
-        <NotesPanel
-          notes={notes}
-          onClose={() => setActivePanel(undefined)}
-          onNotesChange={setNotes}
         />
       )}
 
