@@ -12,10 +12,11 @@ import {
   LogOutIcon,
   PlusIcon,
   SettingsIcon,
+  TagsIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react"
-import { useMutation, useQuery } from "convex/react"
+import { useAction, useMutation, useQuery } from "convex/react"
 import { makeFunctionReference } from "convex/server"
 import { useAuthActions, useConvexAuth } from "@convex-dev/auth/react"
 import {
@@ -89,6 +90,9 @@ const householdApi = {
   ),
   saveMyContactProfile: makeFunctionReference<"mutation">(
     "household:saveMyContactProfile"
+  ),
+  changeMyPassword: makeFunctionReference<"action">(
+    "household:changeMyPassword"
   ),
   listAggregateTasks: makeFunctionReference<"query">(
     "household:listAggregateTasks"
@@ -1234,7 +1238,7 @@ function NotesPanel({
 function SettingsPanel({
   categories,
   categoryReminderPresets,
-  onCategoriesChange,
+  onChangePassword,
   onCategoryReminderPresetsChange,
   onClose,
   onReminderProfileChange,
@@ -1243,7 +1247,7 @@ function SettingsPanel({
 }: {
   categories: TaskCategory[]
   categoryReminderPresets: CategoryReminderPreset[]
-  onCategoriesChange: (categories: TaskCategory[]) => void
+  onChangePassword: (currentPassword: string, newPassword: string) => Promise<void>
   onCategoryReminderPresetsChange: (
     presets: CategoryReminderPreset[]
   ) => void
@@ -1252,51 +1256,11 @@ function SettingsPanel({
   reminderProfile: MemberReminderProfile
   viewer: MemberId
 }) {
-  const [categoryName, setCategoryName] = useState("")
-  const [categoryColor, setCategoryColor] = useState("#64748b")
   const [selectedReminderCategoryId, setSelectedReminderCategoryId] =
     useState<CategoryId>("classes")
-  const defaultCategoryIds = new Set(TASK_CATEGORIES.map((category) => category.id))
-
-  function addCategory(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-
-    const label = categoryName.trim()
-    const id = createCategoryId(label)
-
-    if (!label || !id) {
-      toast.error("Category name is required.")
-      return
-    }
-
-    if (categories.some((category) => category.id === id)) {
-      toast.error("That category already exists.")
-      return
-    }
-
-    onCategoriesChange([
-      ...categories,
-      {
-        id,
-        label,
-        shortLabel: label.slice(0, 10),
-        color: categoryColor,
-        softColor: softColorFromHex(categoryColor),
-      },
-    ])
-    setCategoryName("")
-    setCategoryColor("#64748b")
-    toast.success("Category added.")
-  }
-
-  function removeCategory(categoryId: CategoryId) {
-    if (defaultCategoryIds.has(categoryId)) {
-      toast.error("Default categories stay available.")
-      return
-    }
-
-    onCategoriesChange(categories.filter((category) => category.id !== categoryId))
-  }
+  const [currentPassword, setCurrentPassword] = useState("")
+  const [newPassword, setNewPassword] = useState("")
+  const [isChangingPassword, setIsChangingPassword] = useState(false)
 
   function updateReminderProfile(patch: Partial<MemberReminderProfile>) {
     onReminderProfileChange({ ...reminderProfile, ...patch })
@@ -1325,9 +1289,30 @@ function SettingsPanel({
     )
   }
 
+  async function submitPasswordChange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!currentPassword || !newPassword) {
+      toast.error("Enter your current and new password.")
+      return
+    }
+
+    setIsChangingPassword(true)
+    try {
+      await onChangePassword(currentPassword, newPassword)
+      setCurrentPassword("")
+      setNewPassword("")
+      toast.success("Password updated.")
+    } catch {
+      toast.error("Could not change your password. Check your current password.")
+    } finally {
+      setIsChangingPassword(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/15 p-3 backdrop-blur-[2px]">
-      <section className="grid max-h-[calc(100svh-1.5rem)] w-full max-w-2xl gap-4 overflow-auto rounded-lg border bg-popover p-4 text-popover-foreground shadow-2xl">
+      <section className="grid max-h-[calc(100svh-1.5rem)] w-full max-w-5xl gap-4 overflow-y-auto rounded-lg border bg-popover p-5 text-popover-foreground shadow-2xl lg:overflow-visible">
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <SettingsIcon className="size-5 text-muted-foreground" aria-hidden="true" />
@@ -1336,7 +1321,7 @@ function SettingsPanel({
                 Settings
               </h2>
               <p className="truncate text-sm text-muted-foreground">
-                Manage reminders and calendar categories
+                Your contacts, password, and reminder defaults
               </p>
             </div>
           </div>
@@ -1345,15 +1330,16 @@ function SettingsPanel({
           </Button>
         </div>
 
-        <section className="grid gap-3 rounded-lg border bg-background p-3">
-          <div>
-            <h3 className="text-sm font-semibold">Reminder Accounts</h3>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Only your delivery details are visible and editable here.
-            </p>
-          </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <section className="grid gap-3 rounded-lg border bg-background p-4">
+            <div>
+              <h3 className="text-sm font-semibold">Your Reminder Delivery</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Only your contact details are visible and editable here.
+              </p>
+            </div>
 
-          <div className="grid gap-3 rounded-lg border bg-card p-3">
+            <div className="grid gap-3 rounded-lg border bg-card p-3">
             <div className="flex items-center gap-3">
               <span
                 className="flex size-9 items-center justify-center rounded-lg border text-sm font-semibold"
@@ -1418,10 +1404,39 @@ function SettingsPanel({
                 Text reminders
               </label>
             </div>
-          </div>
-        </section>
+            </div>
 
-        <section className="grid gap-3 rounded-lg border bg-background p-3">
+            <form className="grid gap-3 rounded-lg border bg-card p-3" onSubmit={submitPasswordChange}>
+              <div>
+                <h3 className="text-sm font-semibold">Change Password</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Use at least eight characters.</p>
+              </div>
+              <label className="grid gap-1 text-sm font-medium">
+                Current password
+                <Input
+                  className="h-10"
+                  disabled={isChangingPassword}
+                  onChange={(event) => setCurrentPassword(event.currentTarget.value)}
+                  type="password"
+                  value={currentPassword}
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-medium">
+                New password
+                <Input
+                  className="h-10"
+                  disabled={isChangingPassword}
+                  minLength={8}
+                  onChange={(event) => setNewPassword(event.currentTarget.value)}
+                  type="password"
+                  value={newPassword}
+                />
+              </label>
+              <Button disabled={isChangingPassword} type="submit">Update password</Button>
+            </form>
+          </section>
+
+          <section className="grid content-start gap-3 rounded-lg border bg-background p-4">
           <div>
             <h3 className="text-sm font-semibold">Category Reminder Defaults</h3>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -1478,34 +1493,96 @@ function SettingsPanel({
               </div>
             )
           })()}
-        </section>
+          </section>
+        </div>
+      </section>
+    </div>
+  )
+}
 
-        <form className="grid gap-3 rounded-lg border bg-background p-3" onSubmit={addCategory}>
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
-            <label className="grid gap-1 text-sm font-medium">
-              Category Name
-              <Input
-                className="h-11"
-                placeholder="Pets"
-                value={categoryName}
-                onChange={(event) => setCategoryName(event.currentTarget.value)}
-              />
-            </label>
-            <label className="grid gap-1 text-sm font-medium">
-              Color
-              <Input
-                className="h-11 w-20 p-1"
-                type="color"
-                value={categoryColor}
-                onChange={(event) => setCategoryColor(event.currentTarget.value)}
-              />
-            </label>
-            <div className="flex items-end">
-              <Button disabled={!categoryName.trim()} type="submit">
-                <PlusIcon className="size-4" aria-hidden="true" />
-                Add
-              </Button>
+function CategoryManagerPanel({
+  categories,
+  onCategoriesChange,
+  onClose,
+}: {
+  categories: TaskCategory[]
+  onCategoriesChange: (categories: TaskCategory[]) => void
+  onClose: () => void
+}) {
+  const [categoryName, setCategoryName] = useState("")
+  const [categoryColor, setCategoryColor] = useState("#64748b")
+  const defaultCategoryIds = new Set(TASK_CATEGORIES.map((category) => category.id))
+
+  function addCategory(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const label = categoryName.trim()
+    const id = createCategoryId(label)
+
+    if (!label || !id) {
+      toast.error("Category name is required.")
+      return
+    }
+
+    if (categories.some((category) => category.id === id)) {
+      toast.error("That category already exists.")
+      return
+    }
+
+    onCategoriesChange([
+      ...categories,
+      {
+        id,
+        label,
+        shortLabel: label.slice(0, 10),
+        color: categoryColor,
+        softColor: softColorFromHex(categoryColor),
+      },
+    ])
+    setCategoryName("")
+    setCategoryColor("#64748b")
+    toast.success("Category added.")
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/15 p-3 backdrop-blur-[2px]">
+      <section className="grid max-h-[calc(100svh-1.5rem)] w-full max-w-2xl gap-4 overflow-auto rounded-lg border bg-popover p-4 text-popover-foreground shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <TagsIcon className="size-5 text-muted-foreground" aria-hidden="true" />
+            <div>
+              <h2 className="text-xl font-semibold">Categories</h2>
+              <p className="text-sm text-muted-foreground">Add colors and organize calendar items.</p>
             </div>
+          </div>
+          <Button aria-label="Close categories" size="icon" variant="ghost" onClick={onClose}>
+            <XIcon className="size-4" aria-hidden="true" />
+          </Button>
+        </div>
+
+        <form className="grid gap-3 rounded-lg border bg-background p-3 sm:grid-cols-[1fr_auto_auto]" onSubmit={addCategory}>
+          <label className="grid gap-1 text-sm font-medium">
+            Category name
+            <Input
+              className="h-11"
+              placeholder="Pets"
+              value={categoryName}
+              onChange={(event) => setCategoryName(event.currentTarget.value)}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-medium">
+            Color
+            <Input
+              className="h-11 w-20 p-1"
+              type="color"
+              value={categoryColor}
+              onChange={(event) => setCategoryColor(event.currentTarget.value)}
+            />
+          </label>
+          <div className="flex items-end">
+            <Button disabled={!categoryName.trim()} type="submit">
+              <PlusIcon className="size-4" aria-hidden="true" />
+              Add
+            </Button>
           </div>
         </form>
 
@@ -1514,19 +1591,13 @@ function SettingsPanel({
             const isDefault = defaultCategoryIds.has(category.id)
 
             return (
-              <div
-                key={category.id}
-                className="flex items-center justify-between gap-3 rounded-lg border bg-background p-3"
-              >
+              <div key={category.id} className="flex items-center justify-between gap-3 rounded-lg border bg-background p-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <span
-                    className="size-4 shrink-0 rounded-full"
-                    style={{ backgroundColor: category.color }}
-                  />
+                  <span className="size-4 shrink-0 rounded-full" style={{ backgroundColor: category.color }} />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{category.label}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {isDefault ? "Default" : "Custom"} - {category.id}
+                      {isDefault ? "Default" : "Custom"}
                     </p>
                   </div>
                 </div>
@@ -1536,7 +1607,7 @@ function SettingsPanel({
                     size="icon"
                     type="button"
                     variant="destructive"
-                    onClick={() => removeCategory(category.id)}
+                    onClick={() => onCategoriesChange(categories.filter((item) => item.id !== category.id))}
                   >
                     <Trash2Icon className="size-4" aria-hidden="true" />
                   </Button>
@@ -1781,6 +1852,7 @@ function CalendarHome({
 }) {
   const contactProfile = useQuery(householdApi.getMyContactProfile, {})
   const saveContactProfile = useMutation(householdApi.saveMyContactProfile)
+  const changeMyPassword = useAction(householdApi.changeMyPassword)
   const [tasks, setTasks] = usePersistentState(
     STORAGE_KEYS.tasks,
     buildSeedTasks
@@ -1811,7 +1883,9 @@ function CalendarHome({
   const [draft, setDraft] = useState(() => createDraftForDate(new Date()))
   const [editingTask, setEditingTask] = useState<HouseholdTask>()
   const [convexActions, setConvexActions] = useState<ConvexActions>()
-  const [activePanel, setActivePanel] = useState<"notes" | "settings">()
+  const [activePanel, setActivePanel] = useState<
+    "notes" | "settings" | "categories"
+  >()
   const reportedMissedTaskIds = useRef(new Set<string>())
 
   const calendarCategories = categories.length > 0 ? categories : TASK_CATEGORIES
@@ -1889,6 +1963,14 @@ function CalendarHome({
       smsEnabled: profile.smsEnabled,
     }).catch(() => {
       toast.error("Could not save your reminder contacts.")
+    })
+  }
+
+  async function updatePassword(currentPassword: string, newPassword: string) {
+    await changeMyPassword({
+      username: viewer,
+      currentPassword,
+      newPassword,
     })
   }
 
@@ -2144,6 +2226,10 @@ function CalendarHome({
               <BookOpenIcon className="size-4" aria-hidden="true" />
               <span className="hidden sm:inline">Notes</span>
             </Button>
+            <Button variant="outline" onClick={() => setActivePanel("categories")}>
+              <TagsIcon className="size-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Categories</span>
+            </Button>
             <Button
               aria-label="Settings"
               size="icon"
@@ -2336,12 +2422,20 @@ function CalendarHome({
         <SettingsPanel
           categories={calendarCategories}
           categoryReminderPresets={categoryReminderPresets}
-          onCategoriesChange={setCategories}
+          onChangePassword={updatePassword}
           onCategoryReminderPresetsChange={setCategoryReminderPresets}
           onClose={() => setActivePanel(undefined)}
           onReminderProfileChange={updateReminderProfile}
           reminderProfile={reminderProfile}
           viewer={viewer}
+        />
+      )}
+
+      {activePanel === "categories" && (
+        <CategoryManagerPanel
+          categories={calendarCategories}
+          onCategoriesChange={setCategories}
+          onClose={() => setActivePanel(undefined)}
         />
       )}
     </main>

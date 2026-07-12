@@ -1,6 +1,16 @@
-import { mutationGeneric as mutation, queryGeneric as query } from "convex/server"
+import {
+  actionGeneric as action,
+  mutationGeneric as mutation,
+  queryGeneric as query,
+} from "convex/server"
 import { ConvexError, v } from "convex/values"
-import { getAuthUserId } from "@convex-dev/auth/server"
+import {
+  getAuthSessionId,
+  getAuthUserId,
+  invalidateSessions,
+  modifyAccountCredentials,
+  retrieveAccount,
+} from "@convex-dev/auth/server"
 
 const householdRole = v.union(
   v.literal("adult"),
@@ -302,6 +312,54 @@ export const saveMyContactProfile = mutation({
     })
 
     return await ctx.db.get(profileId)
+  },
+})
+
+export const changeMyPassword = action({
+  args: {
+    username: v.string(),
+    currentPassword: v.string(),
+    newPassword: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const authUserId = await requireAuthUserId(ctx)
+    const username = requireText(args.username, "Username").toLowerCase()
+
+    if (!/^[a-z0-9][a-z0-9_-]{2,31}$/.test(username)) {
+      fail("INVALID_INPUT", "Username is invalid")
+    }
+
+    if (args.newPassword.length < 8) {
+      fail("INVALID_INPUT", "New password must be at least 8 characters")
+    }
+
+    const account = await retrieveAccount(ctx, {
+      provider: "password",
+      account: {
+        id: `${username}@household.local`,
+        secret: args.currentPassword,
+      },
+    })
+
+    if (!account || account.user._id !== authUserId) {
+      fail("FORBIDDEN", "Current password does not match this account")
+    }
+
+    await modifyAccountCredentials(ctx, {
+      provider: "password",
+      account: {
+        id: `${username}@household.local`,
+        secret: args.newPassword,
+      },
+    })
+
+    const currentSessionId = await getAuthSessionId(ctx)
+    await invalidateSessions(ctx, {
+      userId: authUserId,
+      except: currentSessionId ? [currentSessionId] : [],
+    })
+
+    return { changed: true }
   },
 })
 
