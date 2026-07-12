@@ -266,7 +266,12 @@ function normalizeTask(task: HouseholdTask): HouseholdTask {
 function isTaskMissed(task: HouseholdTask, now: number) {
   const endTime = new Date(task.endTime).getTime()
 
-  return task.status !== "Done" && Number.isFinite(endTime) && endTime < now
+  return (
+    task.status !== "Done" &&
+    !task.reopenedAt &&
+    Number.isFinite(endTime) &&
+    endTime < now
+  )
 }
 
 function buildMissedNotifications(
@@ -543,6 +548,10 @@ function ConvexCalendarBridge({
             task.completedAt === undefined
               ? undefined
               : new Date(task.completedAt).toISOString(),
+          reopenedAt:
+            task.reopenedAt === undefined
+              ? undefined
+              : new Date(task.reopenedAt).toISOString(),
         } satisfies HouseholdTask
       })
       .filter((task: HouseholdTask | undefined): task is HouseholdTask =>
@@ -640,14 +649,16 @@ function CalendarEvent({
   const member = getMember(task.assignedTo)
   const category = resolveCategory(categories, task.category)
   const done = task.status === "Done"
+  const [showNotes, setShowNotes] = useState(false)
 
   return (
     <div
-      className={`group/event grid min-w-0 grid-cols-[1fr_auto] items-start gap-1 rounded-md border-l-4 bg-background/85 px-2 py-1.5 text-left shadow-sm ${
+      style={taskAccentStyle(task, categories, missed)}
+      className={`group/event relative grid min-w-0 grid-cols-[1fr_auto] items-start gap-1 rounded-md border-l-4 bg-background/85 px-2 py-1.5 text-left shadow-sm ${
         missed ? "ring-1 ring-red-600/35" : ""
       }`}
-      style={taskAccentStyle(task, categories, missed)}
-      title={task.notes || undefined}
+      onPointerEnter={() => setShowNotes(Boolean(task.notes))}
+      onPointerLeave={() => setShowNotes(false)}
     >
       <button
         className="min-w-0 text-left"
@@ -689,6 +700,12 @@ function CalendarEvent({
           )}
         </span>
       </button>
+      {showNotes && task.notes && (
+        <div className="absolute left-0 top-[calc(100%+0.375rem)] z-40 w-72 rounded-lg border bg-popover p-3 text-left text-sm text-popover-foreground shadow-xl">
+          <p className="mb-1 text-xs font-semibold text-muted-foreground">Notes</p>
+          <p className="whitespace-pre-wrap leading-5">{task.notes}</p>
+        </div>
+      )}
       <button
         aria-label={done ? "Reopen item" : "Mark item done"}
         className={`mt-0.5 flex size-5 items-center justify-center rounded-sm border bg-background transition ${
@@ -2143,6 +2160,7 @@ function CalendarHome({
       externalUrl: draft.externalUrl.trim() || undefined,
       notes: draft.notes.trim() || undefined,
       completedAt: editingTask?.completedAt,
+      reopenedAt: editingTask?.reopenedAt,
       reminder: draft.reminder,
     }
   }
@@ -2190,6 +2208,8 @@ function CalendarHome({
     const nextStatus = task.status === "Done" ? "Pending" : "Done"
     const completedAt =
       nextStatus === "Done" ? new Date().toISOString() : undefined
+    const reopenedAt =
+      nextStatus === "Pending" ? new Date().toISOString() : undefined
 
     setTasks((current) =>
       current.map((item) =>
@@ -2197,6 +2217,7 @@ function CalendarHome({
           ? {
               ...item,
               completedAt,
+              reopenedAt,
               status: nextStatus,
             }
           : item

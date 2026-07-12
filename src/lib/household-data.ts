@@ -48,6 +48,7 @@ export interface HouseholdTask {
   externalUrl?: string
   notes?: string
   completedAt?: string
+  reopenedAt?: string
   reminder: TaskReminderSettings
 }
 

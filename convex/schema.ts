@@ -85,6 +85,7 @@ export default defineSchema({
     externalUrl: v.optional(v.string()),
     notes: v.optional(v.string()),
     completedAt: v.optional(v.number()),
+    reopenedAt: v.optional(v.number()),
     reminder: v.optional(taskReminder),
     isDemo: v.boolean(),
     createdAt: v.number(),

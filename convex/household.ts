@@ -683,18 +683,10 @@ export const toggleTaskDone = mutation({
     }
 
     patch.completedAt = status === "Done" ? Date.now() : undefined
+    patch.reopenedAt = status === "Pending" ? Date.now() : undefined
 
     await ctx.db.patch(args.taskId, patch)
     const updatedTask = await ctx.db.get(args.taskId)
-
-    await logNotification(ctx, {
-      kind: status === "Done" ? "due" : "assignment",
-      title: status === "Done" ? "Task completed" : "Task reopened",
-      body: task.title,
-      memberId: task.assignedTo,
-      taskId: args.taskId,
-      isDemo: task.isDemo,
-    })
 
     return updatedTask
   },
