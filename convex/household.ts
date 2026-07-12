@@ -1,5 +1,7 @@
 import {
   actionGeneric as action,
+  internalMutationGeneric as internalMutation,
+  makeFunctionReference,
   mutationGeneric as mutation,
   queryGeneric as query,
 } from "convex/server"
@@ -46,6 +48,10 @@ const homeControlStatus = v.union(
   v.literal("Ready"),
   v.literal("Active"),
   v.literal("Paused"),
+)
+
+const saveContactProfileInternal = makeFunctionReference<"mutation">(
+  "household:saveMyContactProfileInternal",
 )
 
 function fail(code: string, message: string): never {
@@ -278,19 +284,19 @@ export const getMyContactProfile = query({
   },
 })
 
-export const saveMyContactProfile = mutation({
+export const saveMyContactProfileInternal = internalMutation({
   args: {
+    authUserId: v.id("users"),
     email: v.string(),
     phone: v.string(),
     emailEnabled: v.boolean(),
     smsEnabled: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const authUserId = await requireAuthUserId(ctx)
     const now = Date.now()
     const profile = await ctx.db
       .query("householdContactProfiles")
-      .withIndex("by_authUserId", (q: any) => q.eq("authUserId", authUserId))
+      .withIndex("by_authUserId", (q: any) => q.eq("authUserId", args.authUserId))
       .unique()
     const patch = {
       email: optionalText(args.email) ?? "",
@@ -306,12 +312,48 @@ export const saveMyContactProfile = mutation({
     }
 
     const profileId = await ctx.db.insert("householdContactProfiles", {
-      authUserId,
+      authUserId: args.authUserId,
       ...patch,
       createdAt: now,
     })
 
     return await ctx.db.get(profileId)
+  },
+})
+
+export const saveMyContactProfile = action({
+  args: {
+    username: v.string(),
+    currentPassword: v.string(),
+    email: v.string(),
+    phone: v.string(),
+    emailEnabled: v.boolean(),
+    smsEnabled: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const authUserId = await requireAuthUserId(ctx)
+    const username = requireText(args.username, "Username").toLowerCase()
+    const account = await retrieveAccount(ctx, {
+      provider: "password",
+      account: {
+        id: `${username}@household.local`,
+        secret: args.currentPassword,
+      },
+    })
+
+    if (!account || account.user._id !== authUserId) {
+      fail("FORBIDDEN", "Current password does not match this account")
+    }
+
+    await ctx.runMutation(saveContactProfileInternal, {
+      authUserId,
+      email: args.email,
+      phone: args.phone,
+      emailEnabled: args.emailEnabled,
+      smsEnabled: args.smsEnabled,
+    })
+
+    return { saved: true }
   },
 })
 

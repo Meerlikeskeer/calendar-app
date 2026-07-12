@@ -87,7 +87,7 @@ const householdApi = {
   getMyContactProfile: makeFunctionReference<"query">(
     "household:getMyContactProfile"
   ),
-  saveMyContactProfile: makeFunctionReference<"mutation">(
+  saveMyContactProfile: makeFunctionReference<"action">(
     "household:saveMyContactProfile"
   ),
   changeMyPassword: makeFunctionReference<"action">(
@@ -910,7 +910,7 @@ function TaskComposer({
           <label className="grid gap-1 text-sm font-medium">
             Start
             <Input
-              className="h-11"
+              className="h-11 bg-background font-sans text-sm text-foreground [color-scheme:light] dark:bg-input/30 dark:[color-scheme:dark]"
               type="datetime-local"
               value={draft.startTime}
               onChange={(event) =>
@@ -921,7 +921,7 @@ function TaskComposer({
           <label className="grid gap-1 text-sm font-medium">
             End
             <Input
-              className="h-11"
+              className="h-11 bg-background font-sans text-sm text-foreground [color-scheme:light] dark:bg-input/30 dark:[color-scheme:dark]"
               type="datetime-local"
               value={draft.endTime}
               onChange={(event) =>
@@ -1284,6 +1284,7 @@ function SettingsPanel({
   onCategoryReminderPresetsChange,
   onClose,
   onReminderProfileChange,
+  onSaveReminderProfile,
   reminderProfile,
   viewer,
 }: {
@@ -1295,6 +1296,7 @@ function SettingsPanel({
   ) => void
   onClose: () => void
   onReminderProfileChange: (profile: MemberReminderProfile) => void
+  onSaveReminderProfile: (currentPassword: string) => Promise<void>
   reminderProfile: MemberReminderProfile
   viewer: MemberId
 }) {
@@ -1303,6 +1305,8 @@ function SettingsPanel({
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [isChangingPassword, setIsChangingPassword] = useState(false)
+  const [contactPassword, setContactPassword] = useState("")
+  const [isSavingContacts, setIsSavingContacts] = useState(false)
 
   function updateReminderProfile(patch: Partial<MemberReminderProfile>) {
     onReminderProfileChange({ ...reminderProfile, ...patch })
@@ -1352,6 +1356,26 @@ function SettingsPanel({
     }
   }
 
+  async function submitContactSave(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!contactPassword) {
+      toast.error("Enter your current password to save contact preferences.")
+      return
+    }
+
+    setIsSavingContacts(true)
+    try {
+      await onSaveReminderProfile(contactPassword)
+      setContactPassword("")
+      toast.success("Reminder delivery preferences saved.")
+    } catch {
+      toast.error("Could not save. Check your current password.")
+    } finally {
+      setIsSavingContacts(false)
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-black/15 p-3 backdrop-blur-[2px]"
@@ -1388,7 +1412,7 @@ function SettingsPanel({
               </p>
             </div>
 
-            <div className="grid gap-3 rounded-lg border bg-card p-3">
+            <form className="grid gap-3 rounded-lg border bg-card p-3" onSubmit={submitContactSave}>
             <div className="flex items-center gap-3">
               <span
                 className="flex size-9 items-center justify-center rounded-lg border text-sm font-semibold"
@@ -1429,7 +1453,7 @@ function SettingsPanel({
               </label>
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-2">
               <label className="flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium">
                 <input
                   checked={reminderProfile.emailEnabled}
@@ -1452,8 +1476,19 @@ function SettingsPanel({
                 />
                 Text reminders
               </label>
-            </div>
-            </div>
+              </div>
+              <label className="grid gap-1 text-sm font-medium">
+                Current password to save changes
+                <Input
+                  className="h-10"
+                  disabled={isSavingContacts}
+                  onChange={(event) => setContactPassword(event.currentTarget.value)}
+                  type="password"
+                  value={contactPassword}
+                />
+              </label>
+              <Button disabled={isSavingContacts} type="submit">Save contact preferences</Button>
+            </form>
 
             <form className="grid gap-3 rounded-lg border bg-card p-3" onSubmit={submitPasswordChange}>
               <div>
@@ -1907,7 +1942,7 @@ function CalendarHome({
   viewer: MemberId
 }) {
   const contactProfile = useQuery(householdApi.getMyContactProfile, {})
-  const saveContactProfile = useMutation(householdApi.saveMyContactProfile)
+  const saveContactProfile = useAction(householdApi.saveMyContactProfile)
   const changeMyPassword = useAction(householdApi.changeMyPassword)
   const [tasks, setTasks] = usePersistentState(
     STORAGE_KEYS.tasks,
@@ -1990,14 +2025,7 @@ function CalendarHome({
         }
 
         setReminderProfile(next)
-        void saveContactProfile({
-          email: next.email,
-          phone: next.phone,
-          emailEnabled: next.emailEnabled,
-          smsEnabled: next.smsEnabled,
-        })
-          .then(() => window.sessionStorage.removeItem(PENDING_CONTACT_PROFILE_KEY))
-          .catch(() => toast.error("Could not save your reminder contacts."))
+        window.sessionStorage.removeItem(PENDING_CONTACT_PROFILE_KEY)
         return
       } catch {
         window.sessionStorage.removeItem(PENDING_CONTACT_PROFILE_KEY)
@@ -2009,13 +2037,16 @@ function CalendarHome({
 
   function updateReminderProfile(profile: MemberReminderProfile) {
     setReminderProfile(profile)
-    void saveContactProfile({
-      email: profile.email,
-      phone: profile.phone,
-      emailEnabled: profile.emailEnabled,
-      smsEnabled: profile.smsEnabled,
-    }).catch(() => {
-      toast.error("Could not save your reminder contacts.")
+  }
+
+  async function saveReminderProfile(currentPassword: string) {
+    await saveContactProfile({
+      username: viewer,
+      currentPassword,
+      email: reminderProfile.email,
+      phone: reminderProfile.phone,
+      emailEnabled: reminderProfile.emailEnabled,
+      smsEnabled: reminderProfile.smsEnabled,
     })
   }
 
@@ -2472,6 +2503,7 @@ function CalendarHome({
           onCategoryReminderPresetsChange={setCategoryReminderPresets}
           onClose={() => setActivePanel(undefined)}
           onReminderProfileChange={updateReminderProfile}
+          onSaveReminderProfile={saveReminderProfile}
           reminderProfile={reminderProfile}
           viewer={viewer}
         />
