@@ -647,6 +647,7 @@ function CalendarEvent({
         missed ? "ring-1 ring-red-600/35" : ""
       }`}
       style={taskAccentStyle(task, categories, missed)}
+      title={task.notes || undefined}
     >
       <button
         className="min-w-0 text-left"
