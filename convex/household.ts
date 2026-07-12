@@ -1,5 +1,6 @@
 import { mutationGeneric as mutation, queryGeneric as query } from "convex/server"
 import { ConvexError, v } from "convex/values"
+import { getAuthUserId } from "@convex-dev/auth/server"
 
 const householdRole = v.union(
   v.literal("adult"),
@@ -227,7 +228,8 @@ export const getCurrentViewer = query({
   args: {},
   handler: async (ctx) => {
     const identity = await requireAuthenticated(ctx)
-    const authUser = await ctx.db.get("users", identity.subject as any)
+    const authUserId = await getAuthUserId(ctx)
+    const authUser = authUserId ? await ctx.db.get(authUserId) : null
     const email = (identity.email ?? authUser?.email ?? "").toLowerCase()
     const username = email.endsWith("@household.local")
       ? email.slice(0, -"@household.local".length)
