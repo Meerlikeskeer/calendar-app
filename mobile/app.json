@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "Household Planner",
+    "slug": "household-planner",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.meer.householdplanner",
+      "buildNumber": "1",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.meer.householdplanner",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#182026"
+      }
+    },
+    "plugins": [
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#182026",
+          "image": "./assets/icon.png",
+          "imageWidth": 160
+        }
+      ]
+    ],
+    "extra": {
+      "convexUrl": "https://basic-caterpillar-18.convex.cloud"
+    }
+  }
+}

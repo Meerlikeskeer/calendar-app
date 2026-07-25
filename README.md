@@ -39,6 +39,10 @@ npx convex env remove HOUSEHOLD_SETUP_CODE
 
 Existing users can still sign in after the provisioning code is removed. The sign-in screen's **Forgot password?** flow uses `HOUSEHOLD_RECOVERY_CODE` to let a household member select a new password. Keep that recovery code private and retain it after removing the provisioning code. The user allowlist and codes are server-only Convex environment variables; never place them in `VITE_*` variables or source control.
 
+## Native iPhone App
+
+The native Expo app lives in [`mobile`](./mobile). It uses the same Convex deployment and password provider as this web app, so household members see the same real-time tasks and use the same account credentials on iPhone, Android, and the web. Its [release guide](./mobile/README.md) covers local testing, TestFlight, App Store submission, and the included hosted privacy policy at `/privacy.html`.
+
 Manual commands:
 
 ```bash

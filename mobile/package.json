@@ -1,0 +1,31 @@
+{
+  "name": "household-planner-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "expo/AppEntry",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo start --ios",
+    "android": "expo start --android",
+    "typecheck": "tsc --noEmit",
+    "doctor": "expo-doctor",
+    "build:ios": "bunx eas-cli build --platform ios --profile production",
+    "submit:ios": "bunx eas-cli submit --platform ios --profile production"
+  },
+  "dependencies": {
+    "@convex-dev/auth": "0.0.94",
+    "@expo/vector-icons": "^15.0.3",
+    "convex": "^1.42.1",
+    "expo": "^57.0.0",
+    "expo-font": "~57.0.1",
+    "expo-secure-store": "~57.0.1",
+    "expo-splash-screen": "~57.0.5",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.0",
+    "typescript": "~6.0.3"
+  }
+}
